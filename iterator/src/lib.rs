@@ -1,14 +1,27 @@
-pub fn flatten<I>(iter: I) -> Flatten<I> {
-    Flatten::new(iter)
+pub fn flatten<I>(iter: I) -> Flatten<I::IntoIter>
+where
+    I: IntoIterator,
+    I::Item: IntoIterator,
+{
+    Flatten::new(iter.into_iter())
 }
 
-pub struct Flatten<O> {
+pub struct Flatten<O>
+where 
+    O: Iterator,
+    O::Item: IntoIterator,
+{
     outer: O,
+    inner: Option<<O::Item as IntoIterator>::IntoIter>,
 }
 
-impl<O> Flatten<O> {
+impl<O> Flatten<O> 
+where 
+    O: Iterator,
+    O::Item: IntoIterator,
+{
     fn new(iter: O) -> Self {
-        Flatten {outer: iter}
+        Flatten {outer: iter, inner: None}
     }
 }
 
@@ -21,7 +34,16 @@ where
 {
     type Item = <O::Item as IntoIterator>::Item;
     fn next(&mut self) -> Option<Self::Item> {
-        self.outer.next().and_then(|inner| inner.into_iter().next())
+        loop {        
+            if let Some(ref mut inner_iter) = self.inner {
+                if let Some(i) = inner_iter.next() {
+                    return Some(i);
+                }
+                self.inner = None;
+            }
+            let next_inner_iter = self.outer.next()?.into_iter();
+            self.inner = Some(next_inner_iter);
+        }      
     }
 }
 
@@ -46,6 +68,11 @@ mod tests {
 
     #[test]
     fn two_wide() {
-        assert_eq!(flatten(vec![vec!["a"], vec!["b"]].into_iter()).count(), 2);
+        assert_eq!(flatten(vec![vec!["a"], vec!["b"]]).count(), 2);
     } 
+
+    #[test]
+    fn empty_wide() {
+        assert_eq!(flatten(vec![Vec::<()>::new(), vec![], vec![]]).count(), 0);
+    }
 }
